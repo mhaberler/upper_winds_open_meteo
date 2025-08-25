@@ -7,7 +7,7 @@ import * as displayManager from './displayManager.js';
 import * as mapManager from './mapManager.js';
 import * as Coordinates from './coordinates.js';
 import { TileCache, cacheTilesForDIP, cacheVisibleTiles } from '../core/tileCache.js';
-import { loadKmlTrack, loadGpxTrack, loadCsvTrackUTC, exportToGpx, exportLandingPatternToGpx } from '../core/trackManager.js';
+import { loadKmlTrack, loadGpxTrack, loadCsvTrackUTC, exportToGpx, exportLandingPatternToGpx, startLiveTracking, stopLiveTracking } from '../core/trackManager.js';
 import { SensorManager } from './sensorManager.js';
 import * as liveTrackingManager from '../core/liveTrackingManager.js';
 import { fetchEnsembleWeatherData, processAndVisualizeEnsemble, clearEnsembleVisualizations } from '../core/ensembleManager.js';
@@ -1403,6 +1403,27 @@ function setupJmlTargetToggleEvents() {
         document.dispatchEvent(new CustomEvent('ui:jumpMasterLineTargetChanged'));
     });
 }
+//Gordon Bennett
+function setupLiveTrackEvents() {
+    const kmlUrlInput = document.getElementById('kmlUrlInput');
+    const startButton = document.getElementById('startLiveTrack');
+    const stopButton = document.getElementById('stopLiveTrack');
+
+    if (!kmlUrlInput || !startButton || !stopButton) {
+        console.warn('Live track UI elements not found.');
+        return;
+    }
+
+    startButton.addEventListener('click', () => {
+        const url = kmlUrlInput.value;
+        // Die Logik befindet sich jetzt zentral im trackManager
+        startLiveTracking(url); 
+    });
+
+    stopButton.addEventListener('click', () => {
+        stopLiveTracking();
+    });
+}
 
 // --- Ensemble-spezifische UI-Updates ---
 
@@ -1544,6 +1565,7 @@ export function initializeEventListeners() {
     // 7. Live-Funktionen
     setupTrackRecordingEvents();
     setupHarpCoordInputEvents();
+    setupLiveTrackEvents();
 
     // 8. Search
     setupPoiSearchButton();

@@ -12,6 +12,7 @@ export const AppState = {
     lastModelRun: null,
     gpxLayer: null,
     gpxPoints: [],
+    liveTrackInterval: null, // Gordon Bennett Tracking
     isLoadingGpx: false,
     isTrackLoaded: false, // New flag
     liveMarker: null,

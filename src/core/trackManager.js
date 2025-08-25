@@ -686,4 +686,113 @@ export async function saveRecordedTrack() {
     }
 }
 
+/*--------------------------------------------------------
+Gordon Bennett Tracking
+---------------------------------------------------------- */
+let liveTrackInterval = null;
 
+/**
+ * Holt KML-Daten von einer URL, parst sie und rendert den Track auf der Karte.
+ * Verwendet querySelectorAll für maximale Kompatibilität mit KML-Dateien, die Namespaces verwenden.
+ * @param {string} url - Die URL zur KML-Datei.
+ */
+export async function loadKmlTrackFromUrl(url) {
+    if (!AppState.map) {
+        Utils.handleError('Map not initialized.');
+        return;
+    }
+    AppState.isLoadingGpx = true;
+    document.dispatchEvent(new CustomEvent('loading:start', { detail: { message: 'Fetching Live Track...' } }));
+
+    try {
+        const response = await fetch(`https://corsproxy.io/?${encodeURIComponent(url)}`);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch KML data. Status: ${response.status}`);
+        }
+        const kmlData = await response.text();
+        const parser = new DOMParser();
+        const xml = parser.parseFromString(kmlData, 'text/xml');
+
+        const points = [];
+        const placemarks = xml.querySelectorAll('Placemark');
+
+        for (let i = 0; i < placemarks.length; i++) {
+            const placemark = placemarks[i];
+            const track = placemark.querySelector('gx\\:Track'); // Handle gx namespace
+            if (!track) continue; // Skip non-track Placemarks
+
+            const coordTags = track.querySelectorAll('gx\\:coord');
+            if (coordTags.length === 0) continue;
+
+            // Get timestamps from <when> tags (assumes they match coord count)
+            const whenTags = track.querySelectorAll('when');
+            const times = Array.from(whenTags).map(tag => tag.textContent.trim());
+
+            Array.from(coordTags).forEach((coordTag, index) => {
+                const coordText = coordTag.textContent.trim();
+                if (!coordText) return; // Skip empty
+
+                const parts = coordText.split(',').map(parseFloat);
+                if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1])) {
+                    console.warn(`Invalid gx:coord in Placemark ${i}: ${coordText}`);
+                    return;
+                }
+
+                const [lng, lat, ele] = parts;
+                const time = times[index] || null; // Associate time if available
+                points.push({ lat, lng, ele: ele || null, time });
+            });
+        }
+
+        if (points.length < 1) {
+            throw new Error('KML file contains no valid track coordinate data.');
+        }
+
+        await renderTrack(points, "Live Track");
+
+    } catch (error) {
+        console.error('[trackManager] Error in loadKmlTrackFromUrl:', error);
+        Utils.handleError('Error loading live KML: ' + error.message);
+    } finally {
+        AppState.isLoadingGpx = false;
+        document.dispatchEvent(new CustomEvent('loading:stop'));
+    }
+}
+
+/**
+ * Startet das regelmäßige Abrufen der KML-Daten von einer URL.
+ * @param {string} url - Die URL zur KML-Datei.
+ * @param {number} intervalSeconds - Das Aktualisierungsintervall in Sekunden.
+ */
+export function startLiveTracking(url, intervalSeconds = 120) {
+    stopLiveTracking(); // Stellt sicher, dass kein alter Timer läuft
+
+    // Validierung der URL
+    if (!url || !url.startsWith('http')) {
+        Utils.handleError("Please enter a valid KML URL.");
+        return;
+    }
+
+    Utils.handleMessage(`Live tracking started. Updating every ${intervalSeconds} seconds.`);
+    
+    // Sofortiger erster Abruf
+    loadKmlTrackFromUrl(url);
+
+    // Regelmäßige Aktualisierung starten
+    liveTrackInterval = setInterval(() => {
+        loadKmlTrackFromUrl(url);
+    }, intervalSeconds * 1000);
+
+    AppState.liveTrackInterval = liveTrackInterval;
+}
+
+/**
+ * Stoppt das regelmäßige Abrufen der KML-Daten.
+ */
+export function stopLiveTracking() {
+    if (AppState.liveTrackInterval) {
+        clearInterval(AppState.liveTrackInterval);
+        AppState.liveTrackInterval = null;
+        Utils.handleMessage("Live tracking stopped.");
+    }
+}
